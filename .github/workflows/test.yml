@@ -5,17 +5,61 @@ on:
     branches:
       - main
 
+env:
+  VITE_NEON_DB_URL: ${{ secrets.VITE_NEON_DB_URL }}
+  VITE_NEON_DB_POOLER_URL: ${{ secrets.VITE_NEON_DB_POOLER_URL }}
+  VITE_VERCEL_TOKEN: ${{ secrets.VITE_VERCEL_TOKEN }}
+  VITE_WSPROXY: ${{ vars.VITE_WSPROXY }}
+
 jobs:
-  test:
+  test-node-16:
     runs-on: ubuntu-latest
     steps:
       # setup
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 16
 
       - name: Install package dependencies
-        run: bun install
+        run: |
+          # strip Prisma, whose preinstall script throws on Node versions less than 18.x
+          sudo apt-get install jq
+          jq 'del(.devDependencies.prisma, .devDependencies."@prisma/client")' package.json > tmp.json
+          mv tmp.json package.json
+          npm install
 
       # goal
-      - name: Run tests
-        run: bun run test
+      - name: Run tests in Node 16 (no native WebSocket or fetch), node environment
+        run: npm run test:node
+
+  test-node-lts:
+    runs-on: ubuntu-latest
+    steps:
+      # setup
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: Install package dependencies
+        run: npm install
+
+      # goal
+      - name: Run tests in Node LTS, node environment
+        run: npm run test:node
+
+      - name: Run tests in Node LTS, edge-runtime environment
+        run: npm run test:edge
+
+      - name: Run tests with third-party packages in Node LTS, node environment
+        run: npm run test:packages
+
+      - name: Run browser tests
+        run: npm run test:browser
+
+      - name: Run Cloudflare Workers tests
+        run: npm run test:cloudflare
+
+      - name: Run Vercel Functions tests
+        run: npm run test:vercel
